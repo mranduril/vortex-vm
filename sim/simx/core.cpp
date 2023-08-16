@@ -345,7 +345,15 @@ void Core::barrier(uint32_t bar_id, uint32_t count, uint32_t warp_id) {
 }
 
 void Core::icache_read(void *data, uint64_t addr, uint32_t size) {
-  mmu_.read(data, addr, size, 0);
+  try  
+  {
+    mmu_.read(data, addr, size, ACCESS_TYPE::LOAD);
+  }
+  catch (Page_Fault_Exception& page_fault)  
+  {
+    std::cout<<page_fault.what()<<std::endl;
+    throw;
+  }  
 }
 
 AddrType Core::get_addr_type(uint64_t addr) {  
@@ -373,7 +381,15 @@ void Core::dcache_read(void *data, uint64_t addr, uint32_t size) {
   if (type == AddrType::Shared) {
     sharedmem_->read(data, addr, size);
   } else {  
-    mmu_.read(data, addr, size, 0);
+    try  
+    {
+      mmu_.read(data, addr, size, ACCESS_TYPE::LOAD);
+    }
+    catch (Page_Fault_Exception& page_fault)  
+    {
+      std::cout<<page_fault.what()<<std::endl;
+      throw;
+    }  
   }
 
   DPH(2, "Mem Read: addr=0x" << std::hex << addr << ", data=0x" << ByteStream(data, size) << " (size=" << size << ", type=" << type << ")" << std::endl);
@@ -388,7 +404,15 @@ void Core::dcache_write(const void* data, uint64_t addr, uint32_t size) {
     if (type == AddrType::Shared) {
       sharedmem_->write(data, addr, size);
     } else {
-      mmu_.write(data, addr, size, 0);
+      try  
+      {
+        mmu_.write(data, addr, size, ACCESS_TYPE::STORE);
+      }
+      catch (Page_Fault_Exception& page_fault)  
+      {
+        std::cout<<page_fault.what()<<std::endl;
+        throw;
+      }  
     }
   }
   DPH(2, "Mem Write: addr=0x" << std::hex << addr << ", data=0x" << ByteStream(data, size) << " (size=" << size << ", type=" << type << ")" << std::endl);  
@@ -434,6 +458,7 @@ void Core::cout_flush() {
 uint32_t Core::get_csr(uint32_t addr, uint32_t tid, uint32_t wid) {
   switch (addr) {
   case CSR_SATP:
+    return csrs_.at(wid).at(tid)[addr];
   case CSR_PMPCFG0:
   case CSR_PMPADDR0:
   case CSR_MSTATUS:
@@ -691,6 +716,9 @@ void Core::set_csr(uint32_t addr, uint32_t value, uint32_t tid, uint32_t wid) {
     fcsrs_.at(wid) = value & 0xff;
     break;
   case CSR_SATP:
+    csrs_.at(wid).at(tid)[addr] = value;
+    mmu_.set_satp(value);
+    break;
   case CSR_MSTATUS:
   case CSR_MEDELEG:
   case CSR_MIDELEG:

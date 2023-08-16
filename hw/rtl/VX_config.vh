@@ -1,6 +1,22 @@
 `ifndef VX_CONFIG_VH
 `define VX_CONFIG_VH
 
+`ifndef VM_ADDR_MODE
+`define VM_ADDR_MODE SV32
+`endif
+
+`ifndef PTE_SIZE
+`define PTE_SIZE 8
+`endif
+
+`ifndef TLB_SIZE
+`define TLB_SIZE 32
+`endif
+
+`ifndef SUPER_PAGING
+`define SUPER_PAGING false
+`endif
+
 `ifndef MIN
 `define MIN(x, y)   (((x) < (y)) ? (x) : (y))
 `endif
@@ -22,7 +38,7 @@
 // 32 bit XLEN as default.
 `ifndef XLEN_32
 `ifndef XLEN_64
-`define XLEN_32
+`define XLEN_64
 `endif
 `endif
 

@@ -33,6 +33,8 @@ public:
 
   void write_dcr(uint32_t addr, uint32_t value);
 
+  void set_core_satp(uint32_t satp);
+
   ProcessorImpl::PerfStats perf_stats() const;
 
 private:

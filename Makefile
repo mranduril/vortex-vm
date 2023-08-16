@@ -3,7 +3,7 @@ all:
 	$(MAKE) -C hw
 	$(MAKE) -C sim
 	$(MAKE) -C kernel
-	$(MAKE) -C runtime
+	$(MAKE) -C runtime simx stub
 	$(MAKE) -C tests
 
 clean:

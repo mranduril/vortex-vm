@@ -109,6 +109,14 @@ void ProcessorImpl::write_dcr(uint32_t addr, uint32_t value) {
   dcrs_.write(addr, value);
 }
 
+void ProcessorImpl::set_core_satp(uint32_t satp) {
+  for (auto cluster : clusters_) {
+    for (auto core : cluster.get()->get_cores_()) {
+      core->set_csr(CSR_SATP,satp,0,0);
+    }
+  }
+}
+
 ProcessorImpl::PerfStats ProcessorImpl::perf_stats() const {
   ProcessorImpl::PerfStats perf;
   perf.mem_reads   = perf_mem_reads_;
@@ -141,4 +149,15 @@ int Processor::run() {
 
 void Processor::write_dcr(uint32_t addr, uint32_t value) {
   return impl_->write_dcr(addr, value);
+}
+
+uint32_t Processor::get_satp() {
+  std::cout << "getting SATP: 0x" << std::hex << this->satp << std::endl;
+  return this->satp;
+}
+
+void Processor::set_satp(uint32_t satp) {
+  this->satp = satp;
+  std::cout << "set SATP: 0x" << std::hex << this->satp << std::endl;
+  impl_->set_core_satp(satp);
 }

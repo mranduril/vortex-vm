@@ -1,0 +1,11 @@
+*
+!*.*
+!*/
+*.elf
+*.bin
+*.o
+*.log
+*.so
+*.a
+*.depend
+*.dump

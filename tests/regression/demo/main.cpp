@@ -157,7 +157,7 @@ int main(int argc, char *argv[]) {
 
   // upload source buffer0
   {
-    std::cout << "upload source buffer0" << std::endl;
+    std::cout << "upload source buffer0 to dev_maddr: " << std::hex << kernel_arg.src0_addr << std::endl;
     auto buf_ptr = (int32_t*)vx_host_ptr(staging_buf);
     for (uint32_t i = 0; i < num_points; ++i) {
       buf_ptr[i] = i-1;
@@ -167,7 +167,7 @@ int main(int argc, char *argv[]) {
 
   // upload source buffer1
   {
-    std::cout << "upload source buffer1" << std::endl;
+    std::cout << "upload source buffer1 to dev_maddr: " << std::hex << kernel_arg.src1_addr << std::endl;
     auto buf_ptr = (int32_t*)vx_host_ptr(staging_buf);
     for (uint32_t i = 0; i < num_points; ++i) {
       buf_ptr[i] = i+1;

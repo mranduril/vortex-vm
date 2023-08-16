@@ -325,6 +325,10 @@ void Cluster::barrier(uint32_t bar_id, uint32_t count, uint32_t core_id) {
     }
 }
 
+std::vector<Core::Ptr> Cluster::get_cores_() {
+  return cores_;
+}
+
 ProcessorImpl* Cluster::processor() const {
   return processor_;
 }

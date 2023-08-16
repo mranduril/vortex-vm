@@ -36,7 +36,6 @@ public:
             printf("error: invalid argurments\n");
             return -1;
         }
-
         // Align allocation size
         size = AlignSize(size, blockAlign_);
 

@@ -68,6 +68,8 @@ public:
 
   void barrier(uint32_t bar_id, uint32_t count, uint32_t core_id);
 
+  std::vector<Core::Ptr> get_cores_();
+
   ProcessorImpl* processor() const;
 
   Cluster::PerfStats perf_stats() const;
