@@ -11,7 +11,7 @@ namespace vortex {
 enum VA_MODE
 {
   BARE,
-  SV32
+  SV64
 };
 
 enum ACCESS_TYPE
@@ -229,7 +229,7 @@ private:
   mutable uint64_t last_page_index_;
 };
 
-class PTE_SV32_t 
+class PTE_SV64_t 
 {
 
   private:
@@ -248,7 +248,7 @@ class PTE_SV32_t
     uint32_t rsw;
     uint32_t flags;
     bool d, a, g, u, x, w, r, v;
-    PTE_SV32_t(uint64_t address) : address(address)
+    PTE_SV64_t(uint64_t address) : address(address)
     { 
       flags =  bits(address,0,7);
       rsw = bits(address,8,9);
@@ -266,7 +266,7 @@ class PTE_SV32_t
     }
 };
 
-class vAddr_SV32_t 
+class vAddr_SV64_t 
 {
 
   private:
@@ -283,7 +283,7 @@ class vAddr_SV32_t
   public:
     uint64_t vpn[2];
     uint64_t pgoff;
-    vAddr_SV32_t(uint64_t address) : address(address)
+    vAddr_SV64_t(uint64_t address) : address(address)
     {
       vpn[0] = bits(address,12,21);
       vpn[1] = bits(address,22,31);

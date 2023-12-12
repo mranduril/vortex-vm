@@ -58,7 +58,7 @@ void cleanup() {
     vx_mem_free(device, kernel_arg.src0_addr);
     vx_mem_free(device, kernel_arg.src1_addr);
     vx_mem_free(device, kernel_arg.dst_addr);
-    vx_dev_close(device);
+    //vx_dev_close(device);
   }
 }
 

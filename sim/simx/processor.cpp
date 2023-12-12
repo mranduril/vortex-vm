@@ -152,7 +152,6 @@ void Processor::write_dcr(uint32_t addr, uint32_t value) {
 }
 
 uint32_t Processor::get_satp() {
-  std::cout << "getting SATP: 0x" << std::hex << this->satp << std::endl;
   return this->satp;
 }
 

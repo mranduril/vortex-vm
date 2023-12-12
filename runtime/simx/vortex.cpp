@@ -109,15 +109,14 @@ public:
 
     int map_local_mem(uint64_t size, uint64_t* dev_maddr) 
     {
-        bool is_pc = false;
-        std::cout << "startup addr: " << std::hex << STARTUP_ADDR << std::endl;
-        std::cout << "bit mode: " << std::dec << XLEN << std::endl;
+        bool skip = false;
         if (*dev_maddr == STARTUP_ADDR || *dev_maddr == 0x7FFFF000) {
-            is_pc = true;
+            skip = true;
         }
 
-        if (get_mode() == VA_MODE::BARE)
+        if (get_mode() == VA_MODE::BARE) {
             return 0;
+        }
 
         uint64_t ppn = *dev_maddr >> 12;
         uint64_t init_pAddr = *dev_maddr;
@@ -131,7 +130,7 @@ public:
         {
             //Currently a 1-1 mapping is used, this can be changed here to support different
             //mapping schemes
-            vpn = is_pc ? ppn : ppn + 0xf0000;
+            vpn = skip ? ppn : ppn + 0xf0000;
             //vpn = ppn;
 
             //If ppn to vpn mapping doesnt exist.
@@ -143,15 +142,11 @@ public:
             }
         }
 
-        std::cout << "mapped virtual addr: " << init_vAddr << " to physical addr: " << init_pAddr << std::endl;
         uint64_t size_bits;
-        if (is_pc) {
-            std::cout << "not returning virtual address because it is PC or stack" << std::endl;
-            std::pair<uint64_t, uint8_t> ptw_access = page_table_walk(init_vAddr - 0xf0000000, &size_bits);
+        if (skip) {
             return 0;
-        } else {
-            std::pair<uint64_t, uint8_t> ptw_access = page_table_walk(init_vAddr, &size_bits);
         }
+
         *dev_maddr = init_vAddr; // commit vpn to be returned to host
         
         return 0;
@@ -159,7 +154,6 @@ public:
 
     int mem_alloc(uint64_t size, uint64_t* dev_maddr) {
         int err = mem_allocator_.allocate(size, dev_maddr);
-        std::cout << "physical addr: " << std::hex << *dev_maddr << std::endl;
         map_local_mem(size, dev_maddr);
         return err;
     }
@@ -184,7 +178,6 @@ public:
         {
             map_local_mem(asize,&dest_addr);
         }
-        std::cout << "uploading to 0x" << pAddr << std::endl;
         ram_.write((const uint8_t*)src + src_offset, pAddr, asize);        
         return 0;
     }
@@ -239,9 +232,9 @@ public:
         uint32_t satp;
         if (mode == VA_MODE::BARE)
             satp = 0;
-        else if (mode == VA_MODE::SV32)
+        else if (mode == VA_MODE::SV64)
         {
-            satp = (alloc_page_table() >> 10) | 0x80000000;
+            satp = alloc_page_table();
         }
         processor_.set_satp(satp);
     }
@@ -249,47 +242,48 @@ public:
     uint32_t get_ptbr()
     {        
 
-        return processor_.get_satp() & 0x003fffff;
+        return processor_.get_satp();
     }
 
     VA_MODE get_mode()
     {
-        return processor_.get_satp() & 0x80000000 ? VA_MODE::SV32 : VA_MODE::BARE;
+        return VA_MODE::SV64;
     }  
 
     void update_page_table(uint64_t pAddr, uint64_t vAddr) {
-        std::cout << "mapping vpn: " << vAddr << " to ppn:" << pAddr << std::endl;
+        std::cout << "mapping PPN 0x" << std::hex << pAddr << " to VPN 0x" << std::hex << vAddr << ":" << std::endl;
+        std::cout << "\t";
+        vAddr = vAddr << 12;
         //Updating page table with the following mapping of (vAddr) to (pAddr).
         uint64_t ppn_1, pte_addr, pte_bytes;
-        uint64_t vpn_1 = bits(vAddr, 10, 19);
-        uint64_t vpn_0 = bits(vAddr, 0, 9);
+        uint64_t vpn_1 = bits(vAddr, 22, 31);
+        uint64_t vpn_0 = bits(vAddr, 12, 21);
 
         //Read first level PTE.
-        pte_addr = (get_ptbr() << 12) + (vpn_1 * PTE_SIZE);
+        pte_addr = get_ptbr() + vpn_1 * PTE_SIZE;
         pte_bytes = read_pte(pte_addr);     
-        std::cout << "[PTE] addr 0x" << std::hex << pte_addr << ", PTE 0x" << std::hex << pte_bytes << std::endl;
-
 
         if ( bit(pte_bytes, 0) && ((pte_bytes & 0xFFFFFFFF) != 0xbaadf00d))
         {
             //If valid bit set, proceed to next level using new ppn form PTE.
-            std::cout << "PTE valid, continuing the walk..." << std::endl;
             ppn_1 = (pte_bytes >> 10);
+            std::cout << pte_bytes;
         }
         else
         {
             //If valid bit not set, allocate a second level page table
             // in device memory and store ppn in PTE. Set rwx = 000 in PTE
             //to indicate this is a pointer to the next level of the page table.
-            ppn_1 = (alloc_page_table() >> 12);
-            pte_bytes = ( (ppn_1 << 10) | 0b0000000001) ;
+            ppn_1 = alloc_page_table();
+            pte_bytes = ( (ppn_1 << 10) | 0b0000000001);
+            std::cout << pte_bytes;
             write_pte(pte_addr, pte_bytes);
         }
+        std::cout << " --> " << std::endl << "\t\t";
 
         //Read second level PTE.
-        pte_addr = (ppn_1 << 12) + (vpn_0 * PTE_SIZE);
+        pte_addr = ppn_1 + vpn_0 * PTE_SIZE;
         pte_bytes = read_pte(pte_addr); 
-        std::cout << "got pte: " << std::hex << pte_bytes << std::endl;       
     
         if ( bit(pte_bytes, 0) && ((pte_bytes & 0xFFFFFFFF) != 0xbaadf00d))
         {
@@ -302,6 +296,7 @@ public:
             //If valid bit not set, write ppn of pAddr in PTE. Set rwx = 111 in PTE
             //to indicate this is a leaf PTE and has the stated permissions.
             pte_bytes = ( (pAddr << 10) | 0b0000001111) ;
+            std::cout << pte_bytes;
             write_pte(pte_addr, pte_bytes);
 
             //If super paging is enabled.
@@ -313,7 +308,7 @@ public:
                 bool superpage = true;
                 for(int i = 0; i < 1024; i++)
                 {
-                    pte_addr = (ppn_1 << 12) + (i * PTE_SIZE);
+                    pte_addr = (ppn_1 << 12) + i;
                     pte_bytes = read_pte(pte_addr); 
                   
                     if (!bit(pte_bytes, 0) && ((pte_bytes & 0xFFFFFFFF) != 0xbaadf00d))
@@ -329,40 +324,37 @@ public:
                     //correct PPN1, PPN0 set to zero and correct access bits.
                     pte_addr = (ppn_1 << 12);
                     pte_bytes = read_pte(pte_addr);
-                    pte_addr = (get_ptbr() << 12) + (vpn_1 * PTE_SIZE);
+                    pte_addr = get_ptbr() + vpn_1 * PTE_SIZE;
                     write_pte(pte_addr, pte_bytes);
                 }
             }
         }
+        std::cout << " --> " << std::endl << "\t\t\t0x" << std::hex << pAddr << std::endl;
     }
 
     std::pair<uint64_t, uint8_t> page_table_walk(uint64_t vAddr_bits, uint64_t* size_bits)
     {   
         uint64_t LEVELS = 2;
-        vAddr_SV32_t vAddr(vAddr_bits);
+        vAddr_SV64_t vAddr(vAddr_bits);
         uint64_t pte_bytes;
 
-        std::cout << "PTW on vAddr: 0x" << std::hex << vAddr_bits << std::endl;
 
         //Get base page table.
-        uint64_t a = this->processor_.get_satp() << 12;
-        std::cout << "PTW SATP: 0x" << a << std::endl;
+        uint64_t a = this->processor_.get_satp();
         int i = LEVELS - 1; 
 
         while(true)
         {
 
         //Read PTE.
-        std::cout << "reading PTE from RAM addr 0x" << std::hex << (a+vAddr.vpn[i]*PTE_SIZE) << std::endl;
-        ram_.read(&pte_bytes, a+vAddr.vpn[i]*PTE_SIZE, sizeof(uint64_t));
+        ram_.read(&pte_bytes, a+vAddr.vpn[i] * PTE_SIZE, sizeof(uint64_t));
+
         //pte_bytes &= 0x00000000FFFFFFFF;
-        PTE_SV32_t pte(pte_bytes);
-        std::cout << "got pte: " << std::hex << pte_bytes << std::endl;
+        PTE_SV64_t pte(pte_bytes);
         
         //Check if it has invalid flag bits.
         if ( (pte.v == 0) | ( (pte.r == 0) & (pte.w == 1) ) )
         {
-            std::cout << "Error on vAddr 0x" << std::hex << vAddr_bits << std::endl;
             throw Page_Fault_Exception("Page Fault : Attempted to access invalid entry. Entry: 0x");
         }
 
@@ -377,8 +369,7 @@ public:
             else
             {
             //Continue on to next level.
-            a = (pte_bytes >> 10 ) << 12;
-            std::cout << "next a: " << a << std::endl;
+            a = (pte_bytes >> 10 );
             }
         }
         else
@@ -389,7 +380,7 @@ public:
         }
         }
 
-        PTE_SV32_t pte(pte_bytes);
+        PTE_SV64_t pte(pte_bytes);
 
         //Check RWX permissions according to access type.
         if (pte.r == 0)
@@ -425,44 +416,40 @@ public:
 
     uint64_t alloc_page_table() {
         uint64_t addr;
-        mem_allocator_.allocate(RAM_PAGE_SIZE, &addr);
-        std::cout << "address of page table 0x" << std::hex << addr << std::endl;
+        mem_allocator_.allocate(RAM_PAGE_SIZE * 2, &addr);
         init_page_table(addr);
         return addr;
     }
 
-
     void init_page_table(uint64_t addr) {
-        uint64_t asize = aligned_size(RAM_PAGE_SIZE, CACHE_BLOCK_SIZE);
-        uint8_t *src = new uint8_t[RAM_PAGE_SIZE];
-        for (uint64_t i = 0; i < RAM_PAGE_SIZE; ++i) {
+        uint64_t asize = aligned_size(RAM_PAGE_SIZE * 2, CACHE_BLOCK_SIZE);
+        uint8_t *src = new uint8_t[RAM_PAGE_SIZE * 2];
+        for (uint64_t i = 0; i < RAM_PAGE_SIZE * 2; ++i) {
             src[i] = (0x00000000 >> ((i & 0x3) * 8)) & 0xff;
         }
         ram_.write((const uint8_t*)src, addr, asize);
     }
 
     void read_page_table(uint64_t addr) {
-        uint8_t *dest = new uint8_t[RAM_PAGE_SIZE];
-        download(dest,  addr,  RAM_PAGE_SIZE, 0);
-        printf("VXDRV: download %d bytes from 0x%x\n", RAM_PAGE_SIZE, addr);
-        for (int i = 0; i < RAM_PAGE_SIZE; i += 4) {
+        uint8_t *dest = new uint8_t[RAM_PAGE_SIZE * 2];
+        download(dest,  addr,  RAM_PAGE_SIZE * 2, 0);
+        printf("VXDRV: download %d bytes from 0x%x\n", RAM_PAGE_SIZE * 2, addr);
+        for (int i = 0; i < RAM_PAGE_SIZE * 2; i += 4) {
             printf("mem-read: 0x%x -> 0x%x\n", addr + i, *(uint64_t*)((uint8_t*)dest + i));
         }
     }
 
     void write_pte(uint64_t addr, uint64_t value = 0xbaadf00d) {
-        std::cout << "writing pte " << std::hex << value << " to pAddr: " << std::hex << addr << std::endl;
         uint8_t *src = new uint8_t[PTE_SIZE];
         for (uint64_t i = 0; i < PTE_SIZE; ++i) {
-            src[i] = (value >> ((i & 0x3) * 8)) & 0xff;
+            //(value >> ((i & 0x3) * 8)) & 0xff;
+            src[i] = (value >> (i * 8)) & 0xff;
         }
-        //std::cout << "writing PTE to RAM addr 0x" << std::hex << addr << std::endl;
         ram_.write((const uint8_t*)src, addr, PTE_SIZE);
     }
 
     uint64_t read_pte(uint64_t addr) {
         uint8_t *dest = new uint8_t[PTE_SIZE];
-        std::cout << "[read_pte] reading PTE from RAM addr 0x" << std::hex << addr << std::endl;
         ram_.read((uint8_t*)dest, addr, PTE_SIZE);
         return *(uint64_t*)((uint8_t*)dest);
     }
@@ -589,10 +576,15 @@ extern int vx_mem_free(vx_device_h hdevice, uint64_t dev_maddr) {
     if (nullptr == hdevice)
         return -1;
 
+    vx_device *device = ((vx_device*)hdevice);
+    uint64_t size_bits;
+    std::pair<uint64_t, uint8_t> ptw_access = device->page_table_walk(dev_maddr, &size_bits);
+    uint64_t pfn = ptw_access.first;
+    dev_maddr = (pfn << 12) + 0x40;
+
     if (0 == dev_maddr)
         return 0;
 
-    vx_device *device = ((vx_device*)hdevice);
     return device->mem_free(dev_maddr);
 }
 
@@ -663,7 +655,6 @@ extern int vx_copy_to_dev(vx_buffer_h hbuffer, uint64_t dev_maddr, uint64_t size
         uint64_t size_bits;
         std::pair<uint64_t, uint8_t> ptw_access = buffer->device()->page_table_walk(dev_maddr, &size_bits);
         uint64_t pfn = ptw_access.first;
-        std::cout << "vAddr -> pAddr in driver: " << (pfn << 12) << std::endl;
         dev_maddr = pfn << 12;
     }
     return buffer->device()->upload(buffer->data(), dev_maddr, size, src_offset);
@@ -682,7 +673,6 @@ extern int vx_copy_from_dev(vx_buffer_h hbuffer, uint64_t dev_maddr, uint64_t si
     uint64_t size_bits;
     std::pair<uint64_t, uint8_t> ptw_access = buffer->device()->page_table_walk(dev_maddr, &size_bits);
     uint64_t pfn = ptw_access.first;
-    std::cout << "vAddr -> pAddr in driver: " << (pfn << 12) << std::endl;
     return buffer->device()->download(buffer->data(), (pfn << 12), size, dest_offset);
 }
 

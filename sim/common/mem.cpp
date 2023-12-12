@@ -317,7 +317,6 @@ uint8_t *RAM::get(uint64_t address) const {
     if (it != pages_.end()) {
       page = it->second;
     } else {
-      std::cout << "page not found for address 0x" << std::hex << address << std::endl;
       uint8_t *ptr = new uint8_t[page_size];
       // set uninitialized data to "baadf00d"
       for (uint32_t i = 0; i < page_size; ++i) {
@@ -453,26 +452,25 @@ uint64_t MemoryUnit::vAddr_to_pAddr(uint64_t vAddr, ACCESS_TYPE type)
     }
 
     //Construct final address using pfn and offset.
-    std::cout << "[MemoryUnit] translated vAddr: 0x" << std::hex << vAddr << " to pAddr: 0x" << std::hex << ((pfn << size_bits) + (vAddr & ((1 << size_bits) - 1))) << std::endl;
     return (pfn << size_bits) + (vAddr & ((1 << size_bits) - 1));
 }
 
 std::pair<uint64_t, uint8_t> MemoryUnit::page_table_walk(uint64_t vAddr_bits, ACCESS_TYPE type, uint64_t* size_bits)
 {   
     uint64_t LEVELS = 2;
-    vAddr_SV32_t vAddr(vAddr_bits);
+    vAddr_SV64_t vAddr(vAddr_bits);
     uint64_t pte_bytes;
 
     //Get base page table.
-    uint64_t a = this->ptbr << 12;
+    uint64_t a = this->ptbr;
     int i = LEVELS - 1; 
 
     while(true)
     {
 
       //Read PTE.
-      decoder_.read(&pte_bytes, a+vAddr.vpn[i]*PTE_SIZE, sizeof(uint64_t));
-      PTE_SV32_t pte(pte_bytes);
+      decoder_.read(&pte_bytes, a+vAddr.vpn[i] * PTE_SIZE, sizeof(uint64_t));
+      PTE_SV64_t pte(pte_bytes);
       
       //Check if it has invalid flag bits.
       if ( (pte.v == 0) | ( (pte.r == 0) & (pte.w == 1) ) )
@@ -491,7 +489,7 @@ std::pair<uint64_t, uint8_t> MemoryUnit::page_table_walk(uint64_t vAddr_bits, AC
         else
         {
           //Continue on to next level.
-          a = (pte_bytes >> 10 ) << 12;
+          a = (pte_bytes >> 10 );
         }
       }
       else
@@ -502,7 +500,7 @@ std::pair<uint64_t, uint8_t> MemoryUnit::page_table_walk(uint64_t vAddr_bits, AC
       }
     }
 
-    PTE_SV32_t pte(pte_bytes);
+    PTE_SV64_t pte(pte_bytes);
 
     //Check RWX permissions according to access type.
     if ( (type == ACCESS_TYPE::FETCH) & ((pte.r == 0) | (pte.x == 0)) )
@@ -541,6 +539,7 @@ std::pair<uint64_t, uint8_t> MemoryUnit::page_table_walk(uint64_t vAddr_bits, AC
       *size_bits = 12;
       pfn = a >> 12;
     }
+    std::cout << "translated vAddr 0x" << std::hex << vAddr_bits << " to pAddr 0x" << std::hex << pfn << "000" << std::endl;
     return std::make_pair(pfn, pte_bytes & 0xff);
 }
 
@@ -553,5 +552,5 @@ void MemoryUnit::set_satp(uint32_t satp)
 {
   this->satp = satp;
   this->ptbr = satp & 0x003fffff;
-  this->mode = satp & 0x80000000 ? VA_MODE::SV32 : VA_MODE::BARE;
+  this->mode = VA_MODE::SV64;
 }

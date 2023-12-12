@@ -1432,6 +1432,36 @@ void Warp::execute(const Instr &instr, pipeline_trace_t *trace) {
         trace->fetch_stall = true;
         trace->data = std::make_shared<GPUTraceData>(rsdata[ts][0].i, rsdata[ts][1].i);
       } break;
+      case 5: {
+        // TMC   
+        trace->exe_type = ExeType::GPU;     
+        trace->gpu_type = GpuType::TMC;
+        trace->used_iregs.set(rsrc0);
+        trace->fetch_stall = true;
+        if (rsrc1) {
+          // predicate mode
+          ThreadMask pred;
+          for (uint32_t t = 0; t < num_threads; ++t) {
+            pred[t] = tmask_.test(t) ? (ireg_file_.at(t).at(rsrc0) != 0) : 0;
+          }
+          if (pred.any()) {
+            tmask_ &= pred;
+          }
+        } else {
+          tmask_.reset();
+          for (uint32_t t = 0; t < num_threads; ++t) {
+            tmask_.set(t, rsdata.at(ts)[0].i & (1 << t));
+          }
+        }
+        DPH(3, "*** New TMC: ");
+        for (uint32_t i = 0; i < num_threads; ++i)
+          DPN(3, tmask_.test(i));
+        DPN(3, std::endl);
+
+        if (!tmask_.any()) {
+          core_->active_warps_.reset(warp_id_);
+        }
+      } break;
       default:
         std::abort();
       }

@@ -33,7 +33,7 @@ public:
 
     int allocate(uint64_t size, uint64_t* addr) {
         if (size == 0 || addr == nullptr) {
-            printf("error: invalid argurments\n");
+            printf("error: invalid arguments\n");
             return -1;
         }
         // Align allocation size

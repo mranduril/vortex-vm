@@ -2,7 +2,7 @@
 `define VX_CONFIG_VH
 
 `ifndef VM_ADDR_MODE
-`define VM_ADDR_MODE SV32
+`define VM_ADDR_MODE SV64
 `endif
 
 `ifndef PTE_SIZE
