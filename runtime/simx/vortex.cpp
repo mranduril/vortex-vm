@@ -274,6 +274,8 @@ public:
             //If valid bit not set, allocate a second level page table
             // in device memory and store ppn in PTE. Set rwx = 000 in PTE
             //to indicate this is a pointer to the next level of the page table.
+
+            // HW: pte not initialized here
             ppn_1 = alloc_page_table();
             pte_bytes = ( (ppn_1 << 10) | 0b0000000001);
             std::cout << pte_bytes;
@@ -346,38 +348,41 @@ public:
         while(true)
         {
 
-        //Read PTE.
-        ram_.read(&pte_bytes, a+vAddr.vpn[i] * PTE_SIZE, sizeof(uint64_t));
-
-        //pte_bytes &= 0x00000000FFFFFFFF;
-        PTE_SV64_t pte(pte_bytes);
-        
-        //Check if it has invalid flag bits.
-        if ( (pte.v == 0) | ( (pte.r == 0) & (pte.w == 1) ) )
-        {
-            throw Page_Fault_Exception("Page Fault : Attempted to access invalid entry. Entry: 0x");
-        }
-
-        if ( (pte.r == 0) & (pte.w == 0) & (pte.x == 0))
-        {
-            //Not a leaf node as rwx == 000
-            i--;
-            if (i < 0)
+            //Read PTE.
+            // HW: ram read from 1st layer page table
+            ram_.read(&pte_bytes, a+vAddr.vpn[i] * PTE_SIZE, sizeof(uint64_t));
+    
+            //pte_bytes &= 0x00000000FFFFFFFF;
+            PTE_SV64_t pte(pte_bytes);
+            
+            //Check if it has invalid flag bits.
+            if ( (pte.v == 0) | ( (pte.r == 0) & (pte.w == 1) ) )
             {
-            throw Page_Fault_Exception("Page Fault : No leaf node found.");
+                throw Page_Fault_Exception("Page Fault : Attempted to access invalid entry. Entry: 0x");
+            }
+            // HW: this line tells if we're still looking for metadata or the final PTE
+            if ( (pte.r == 0) & (pte.w == 0) & (pte.x == 0))
+            {
+                //Not a leaf node as rwx == 000
+                i--;
+                if (i < 0)
+                {
+                throw Page_Fault_Exception("Page Fault : No leaf node found.");
+                }
+                else
+                {
+                //Continue on to next level.
+                // shift off bottom 10 bits (status, offset, etc)
+                a = (pte_bytes >> 10 );
+                }
             }
             else
             {
-            //Continue on to next level.
-            a = (pte_bytes >> 10 );
+                //Leaf node found, finished walking.
+                // actual physical addr found
+                a = (pte_bytes >> 10 ) << 12;
+                break;
             }
-        }
-        else
-        {
-            //Leaf node found, finished walking.
-            a = (pte_bytes >> 10 ) << 12;
-            break;
-        }
         }
 
         PTE_SV64_t pte(pte_bytes);
@@ -405,6 +410,7 @@ public:
             *size_bits = 22;
         }
         }
+
         else
         {
         //Regular page.
